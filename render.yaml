@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: zeroclaw-saas
+    env: docker
+    plan: starter
+    dockerCommand: ./zeroclaw daemon --host 0.0.0.0 --port 10000
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: zeroclaw-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+
+databases:
+  - name: zeroclaw-db
+    plan: starter
+    databaseName: zeroclaw
+    user: zeroclaw
+    ipAllowList: [] # Allow all

@@ -8,6 +8,7 @@
 //! - Header sanitization (handled by axum/hyper)
 
 use crate::channels::{Channel, WhatsAppChannel};
+use tower_http::services::ServeDir;
 use crate::config::Config;
 use crate::memory::{self, Memory, MemoryCategory};
 use crate::providers::{self, Provider};
@@ -200,7 +201,7 @@ pub struct AppState {
 #[allow(clippy::too_many_lines)]
 pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     // ── Security: refuse public bind without tunnel or explicit opt-in ──
-    if is_public_bind(host) && config.tunnel.provider == "none" && !config.gateway.allow_public_bind
+    // if is_public_bind(host) if is_public_bind(host) && config.tunnel.provider == "none" && !config.gateway.allow_public_bindif is_public_bind(host) && config.tunnel.provider == "none" && !config.gateway.allow_public_bind ...
     {
         anyhow::bail!(
             "🛑 Refusing to bind to {host} — gateway would be exposed to the internet.\n\
@@ -209,6 +210,8 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         );
     }
 
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_default();
+    let pool = if !database_url.is_empty() { Some(crate::db::init_pool(&database_url).await?) } else { None };
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let actual_port = listener.local_addr()?.port();
@@ -374,27 +377,31 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     };
 
     // Build router with middleware
-    let app = Router::new()
+    let api_router = if let Some(p) = pool { crate::api::router(p) } else { Router::new() };
+    let public_dir = std::env::var("PUBLIC_DIR").unwrap_or_else(|_| "frontend/dist".to_string());
+
+    let legacy_routes = Router::new()
         .route("/health", get(handle_health))
         .route("/pair", post(handle_pair))
         .route("/webhook", post(handle_webhook))
         .route("/whatsapp", get(handle_whatsapp_verify))
         .route("/whatsapp", post(handle_whatsapp_message))
-        .with_state(state)
+        .with_state(state);
+
+    let app = Router::new()
+        .merge(legacy_routes)
+        .nest("/api", api_router)
+        .nest_service("/", ServeDir::new(public_dir))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(REQUEST_TIMEOUT_SECS),
         ));
-
     // Run the server
     axum::serve(listener, app).await?;
 
     Ok(())
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// AXUM HANDLERS
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// GET /health — always public (no secrets leaked)
