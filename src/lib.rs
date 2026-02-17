@@ -39,6 +39,8 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
 pub mod agent;
+pub mod api;
+pub mod db;
 pub mod channels;
 pub mod config;
 pub mod cost;

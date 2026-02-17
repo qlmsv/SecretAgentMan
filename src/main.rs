@@ -38,6 +38,8 @@ use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
 mod agent;
+mod api;
+mod db;
 mod channels;
 mod rag {
     pub use zeroclaw::rag::*;

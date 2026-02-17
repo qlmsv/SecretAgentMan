@@ -377,6 +377,8 @@ impl Agent {
         results
     }
 
+    pub fn set_memory(&mut self, memory: Arc<dyn Memory>) { self.memory = memory; }
+    pub fn set_history(&mut self, history: Vec<ConversationMessage>) { self.history = history; }
     pub async fn turn(&mut self, user_message: &str) -> Result<String> {
         if self.history.is_empty() {
             let system_prompt = self.build_system_prompt()?;
