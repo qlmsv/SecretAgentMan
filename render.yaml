@@ -96,6 +96,24 @@ services:
       mountPath: /zeroclaw-data
       sizeGB: 5
 
+# Frontend (Next.js)
+  - type: web
+    name: ai-mentor-frontend
+    runtime: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    plan: starter
+    region: oregon
+
+    envVars:
+      - key: NODE_ENV
+        value: "production"
+      - key: API_URL
+        fromService:
+          type: web
+          name: ai-mentor-api
+          property: host
+
 # Database for central auth (optional - can use SQLite in disk instead)
 # Uncomment to use managed PostgreSQL instead of SQLite
 # databases:

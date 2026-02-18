@@ -8,6 +8,11 @@ __pycache__/
 *.pyc
 docker-compose.override.yml
 
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
 # Environment files (may contain secrets)
 .env
 
