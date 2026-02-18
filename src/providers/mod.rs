@@ -442,7 +442,7 @@ pub fn create_provider_with_url(
 
         // ── Extended ecosystem (community favorites) ─────────
         "groq" => Ok(Box::new(OpenAiCompatibleProvider::new(
-            "Groq", "https://api.groq.com/openai", key, AuthStyle::Bearer,
+            "Groq", "https://api.groq.com/openai/v1", key, AuthStyle::Bearer,
         ))),
         "mistral" => Ok(Box::new(OpenAiCompatibleProvider::new(
             "Mistral", "https://api.mistral.ai/v1", key, AuthStyle::Bearer,
