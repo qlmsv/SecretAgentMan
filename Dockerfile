@@ -43,7 +43,7 @@ workspace_dir = "/zeroclaw-data/workspace"
 config_path = "/zeroclaw-data/.zeroclaw/config.toml"
 api_key = ""
 default_provider = "anthropic"
-default_model = "claude-opus-4-5-20250514"
+default_model = "claude-opus-4-5"
 default_temperature = 0.7
 
 [gateway]
@@ -103,7 +103,7 @@ ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
 # Default provider - Anthropic Claude Opus 4.5
 ENV PROVIDER="anthropic"
-ENV ZEROCLAW_MODEL="claude-opus-4-5-20250514"
+ENV ZEROCLAW_MODEL="claude-opus-4-5"
 ENV ZEROCLAW_GATEWAY_PORT=3000
 
 # API_KEY must be provided at runtime!
