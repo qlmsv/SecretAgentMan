@@ -42,8 +42,8 @@ RUN cat > /zeroclaw-data/.zeroclaw/config.toml <<EOF
 workspace_dir = "/zeroclaw-data/workspace"
 config_path = "/zeroclaw-data/.zeroclaw/config.toml"
 api_key = ""
-default_provider = "groq"
-default_model = "llama-3.1-8b-instant"
+default_provider = "anthropic"
+default_model = "claude-opus-4-5-20250514"
 default_temperature = 0.7
 
 [gateway]
@@ -101,9 +101,9 @@ COPY --from=permissions /zeroclaw-data /zeroclaw-data
 # Environment setup
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
-# Default provider - Groq is free and fast
-ENV PROVIDER="groq"
-ENV ZEROCLAW_MODEL="llama-3.1-8b-instant"
+# Default provider - Anthropic Claude Opus 4.5
+ENV PROVIDER="anthropic"
+ENV ZEROCLAW_MODEL="claude-opus-4-5-20250514"
 ENV ZEROCLAW_GATEWAY_PORT=3000
 
 # API_KEY must be provided at runtime!
