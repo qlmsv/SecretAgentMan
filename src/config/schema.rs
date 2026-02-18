@@ -2047,6 +2047,21 @@ impl Config {
                 }
             }
         }
+
+        // Telegram bot: ZEROCLAW_TELEGRAM_BOT_TOKEN
+        if let Ok(token) = std::env::var("ZEROCLAW_TELEGRAM_BOT_TOKEN") {
+            if !token.is_empty() {
+                // Get allowed users from env or default to "*" (all users)
+                let allowed_users = std::env::var("ZEROCLAW_TELEGRAM_ALLOWED_USERS")
+                    .map(|s| s.split(',').map(|u| u.trim().to_string()).collect())
+                    .unwrap_or_else(|_| vec!["*".to_string()]);
+
+                self.channels_config.telegram = Some(TelegramConfig {
+                    bot_token: token,
+                    allowed_users,
+                });
+            }
+        }
     }
 
     pub fn save(&self) -> Result<()> {
@@ -3596,6 +3611,40 @@ default_model = "legacy-model"
         assert_eq!(config.gateway.port, original_port);
 
         std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn env_override_telegram_bot_token() {
+        let _env_guard = env_override_test_guard();
+        let mut config = Config::default();
+        assert!(config.channels_config.telegram.is_none());
+
+        std::env::set_var("ZEROCLAW_TELEGRAM_BOT_TOKEN", "123:ABC");
+        config.apply_env_overrides();
+
+        assert!(config.channels_config.telegram.is_some());
+        let tg = config.channels_config.telegram.unwrap();
+        assert_eq!(tg.bot_token, "123:ABC");
+        assert_eq!(tg.allowed_users, vec!["*".to_string()]);
+
+        std::env::remove_var("ZEROCLAW_TELEGRAM_BOT_TOKEN");
+    }
+
+    #[test]
+    fn env_override_telegram_with_allowed_users() {
+        let _env_guard = env_override_test_guard();
+        let mut config = Config::default();
+
+        std::env::set_var("ZEROCLAW_TELEGRAM_BOT_TOKEN", "123:XYZ");
+        std::env::set_var("ZEROCLAW_TELEGRAM_ALLOWED_USERS", "alice, bob, 123456");
+        config.apply_env_overrides();
+
+        let tg = config.channels_config.telegram.unwrap();
+        assert_eq!(tg.bot_token, "123:XYZ");
+        assert_eq!(tg.allowed_users, vec!["alice", "bob", "123456"]);
+
+        std::env::remove_var("ZEROCLAW_TELEGRAM_BOT_TOKEN");
+        std::env::remove_var("ZEROCLAW_TELEGRAM_ALLOWED_USERS");
     }
 
     #[test]
