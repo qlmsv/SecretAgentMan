@@ -43,7 +43,7 @@ workspace_dir = "/zeroclaw-data/workspace"
 config_path = "/zeroclaw-data/.zeroclaw/config.toml"
 api_key = ""
 default_provider = "groq"
-default_model = "llama-3.3-70b-versatile"
+default_model = "llama-3.1-8b-instant"
 default_temperature = 0.7
 
 [gateway]
@@ -103,7 +103,7 @@ ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
 # Default provider - Groq is free and fast
 ENV PROVIDER="groq"
-ENV ZEROCLAW_MODEL="llama-3.3-70b-versatile"
+ENV ZEROCLAW_MODEL="llama-3.1-8b-instant"
 ENV ZEROCLAW_GATEWAY_PORT=3000
 
 # API_KEY must be provided at runtime!
