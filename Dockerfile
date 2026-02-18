@@ -42,8 +42,8 @@ RUN cat > /zeroclaw-data/.zeroclaw/config.toml <<EOF
 workspace_dir = "/zeroclaw-data/workspace"
 config_path = "/zeroclaw-data/.zeroclaw/config.toml"
 api_key = ""
-default_provider = "openrouter"
-default_model = "openai/gpt-oss-120b:free"
+default_provider = "anthropic"
+default_model = "claude-sonnet-4-5"
 default_temperature = 0.7
 
 [gateway]
@@ -101,9 +101,9 @@ COPY --from=permissions /zeroclaw-data /zeroclaw-data
 # Environment setup
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
-# Default provider - OpenRouter with free GPT model
-ENV PROVIDER="openrouter"
-ENV ZEROCLAW_MODEL="openai/gpt-oss-120b:free"
+# Default provider - Anthropic Claude Sonnet 4.5
+ENV PROVIDER="anthropic"
+ENV ZEROCLAW_MODEL="claude-sonnet-4-5"
 ENV ZEROCLAW_GATEWAY_PORT=3000
 
 # API_KEY must be provided at runtime!
