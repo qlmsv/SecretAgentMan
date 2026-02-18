@@ -125,6 +125,12 @@ probe-rs = { version = "0.30", optional = true }
 # PDF extraction for datasheet RAG (optional, enable with --features rag-pdf)
 pdf-extract = { version = "0.10", optional = true }
 
+# AI-Mentor SaaS additions
+argon2 = "0.5"              # Password hashing (secure, memory-hard)
+jsonwebtoken = "9.3"        # JWT token generation/validation
+rss = "2.0"                 # RSS feed parsing
+md5 = "0.7"                 # MD5 hashing (Cryptomus signature verification)
+
 # Raspberry Pi GPIO / Landlock (Linux only) — target-specific to avoid compile failure on macOS
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = { version = "0.14", optional = true }

@@ -39,6 +39,8 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 mod agent;
 mod approval;
+mod auth;
+mod billing;
 mod channels;
 mod rag {
     pub use zeroclaw::rag::*;
@@ -64,6 +66,7 @@ mod security;
 mod service;
 mod skillforge;
 mod skills;
+mod tenant;
 mod tools;
 mod tunnel;
 mod util;

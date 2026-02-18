@@ -1,0 +1,105 @@
+# Render.com deployment configuration for AI-Mentor SaaS
+# Deploy: connect GitHub repo → Render auto-deploys on push
+
+services:
+  - type: web
+    name: ai-mentor-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Use release stage from multi-stage Dockerfile
+    dockerCommand: ""
+    plan: starter
+    region: oregon
+
+    # Health check
+    healthCheckPath: /health
+
+    # Environment variables (set secrets in Render dashboard)
+    envVars:
+      # Server config
+      - key: PORT
+        value: "3000"
+      - key: ZEROCLAW_GATEWAY_PORT
+        value: "3000"
+      - key: ZEROCLAW_ALLOW_PUBLIC_BIND
+        value: "true"
+
+      # Provider config - set in Render dashboard as secrets
+      - key: PROVIDER
+        value: "groq"
+      - key: ZEROCLAW_MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: GROQ_API_KEY
+        sync: false  # Set manually in dashboard
+
+      # Optional: fallback providers
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Telegram bot
+      - key: ZEROCLAW_TELEGRAM_BOT_TOKEN
+        sync: false
+
+      # Auth/JWT
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Payments (Cryptomus)
+      - key: CRYPTOMUS_API_KEY
+        sync: false
+      - key: CRYPTOMUS_MERCHANT_ID
+        sync: false
+
+      # Workspace persistence
+      - key: ZEROCLAW_WORKSPACE
+        value: "/zeroclaw-data/workspace"
+
+    # Persistent disk for SQLite databases and workspace
+    disk:
+      name: zeroclaw-data
+      mountPath: /zeroclaw-data
+      sizeGB: 10
+
+  # Optional: Background worker for cron jobs
+  - type: worker
+    name: ai-mentor-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: oregon
+
+    # Override CMD to run daemon instead of gateway
+    dockerCommand: "zeroclaw daemon"
+
+    envVars:
+      - key: PROVIDER
+        value: "groq"
+      - key: ZEROCLAW_MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ZEROCLAW_TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ZEROCLAW_WORKSPACE
+        value: "/zeroclaw-data/workspace"
+
+    disk:
+      name: zeroclaw-worker-data
+      mountPath: /zeroclaw-data
+      sizeGB: 5
+
+# Database for central auth (optional - can use SQLite in disk instead)
+# Uncomment to use managed PostgreSQL instead of SQLite
+# databases:
+#   - name: ai-mentor-db
+#     plan: starter
+#     region: oregon
+#     postgresMajorVersion: 16

@@ -5,6 +5,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use directories::UserDirs;
 use reqwest::multipart::{Form, Part};
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -13,6 +14,200 @@ use std::time::Duration;
 /// Telegram's maximum message length for text messages
 const TELEGRAM_MAX_MESSAGE_LENGTH: usize = 4096;
 const TELEGRAM_BIND_COMMAND: &str = "/bind";
+const TELEGRAM_START_COMMAND: &str = "/start";
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TELEGRAM KEYBOARD BUILDER
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A button in Telegram reply keyboard
+#[derive(Debug, Clone, Serialize)]
+pub struct KeyboardButton {
+    pub text: String,
+}
+
+impl KeyboardButton {
+    pub fn text(label: impl Into<String>) -> Self {
+        Self { text: label.into() }
+    }
+}
+
+/// Reply keyboard markup for Telegram
+#[derive(Debug, Clone, Serialize)]
+pub struct ReplyKeyboardMarkup {
+    pub keyboard: Vec<Vec<KeyboardButton>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resize_keyboard: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub one_time_keyboard: Option<bool>,
+}
+
+impl ReplyKeyboardMarkup {
+    pub fn new(rows: Vec<Vec<KeyboardButton>>) -> Self {
+        Self {
+            keyboard: rows,
+            resize_keyboard: Some(true),
+            one_time_keyboard: None,
+        }
+    }
+
+    pub fn one_time(mut self) -> Self {
+        self.one_time_keyboard = Some(true);
+        self
+    }
+}
+
+/// Builder for dynamic Telegram keyboards based on user features
+pub struct TelegramKeyboardBuilder {
+    rows: Vec<Vec<KeyboardButton>>,
+}
+
+impl TelegramKeyboardBuilder {
+    pub fn new() -> Self {
+        Self { rows: vec![] }
+    }
+
+    /// Build keyboard from user's selected features
+    pub fn from_features(features: &[String]) -> ReplyKeyboardMarkup {
+        let mut builder = Self::new();
+
+        // Goals button if enabled
+        if features.iter().any(|f| f == "goals") {
+            builder.add_row(vec![KeyboardButton::text("🎯 Мои цели")]);
+        }
+
+        // Always show assistant button
+        builder.add_row(vec![KeyboardButton::text("💬 Ассистент")]);
+
+        // Diagnostics (esoteric / MBTI)
+        if features.iter().any(|f| f == "diagnostics" || f == "esoteric") {
+            builder.add_row(vec![KeyboardButton::text("📊 Диагностика")]);
+        }
+
+        // Content generation
+        if features.iter().any(|f| f == "content") {
+            builder.add_row(vec![KeyboardButton::text("📝 Контент-план")]);
+        }
+
+        // News digest
+        if features.iter().any(|f| f == "news") {
+            builder.add_row(vec![KeyboardButton::text("📰 Новости")]);
+        }
+
+        // Habits tracker
+        if features.iter().any(|f| f == "habits") {
+            builder.add_row(vec![KeyboardButton::text("✅ Привычки")]);
+        }
+
+        // Settings always at bottom
+        builder.add_row(vec![KeyboardButton::text("⚙️ Настройки")]);
+
+        builder.build()
+    }
+
+    /// Build onboarding keyboard for esoteric vs scientific approach
+    pub fn onboarding_approach() -> ReplyKeyboardMarkup {
+        let mut builder = Self::new();
+        builder.add_row(vec![
+            KeyboardButton::text("🔮 Эзотерика + Наука"),
+            KeyboardButton::text("🧠 Только наука"),
+        ]);
+        builder.build().one_time()
+    }
+
+    /// Build feature selection keyboard
+    pub fn feature_selection(selected: &[String]) -> ReplyKeyboardMarkup {
+        let features = [
+            ("goals", "🎯 Постановка целей"),
+            ("diagnostics", "📊 Диагностика личности"),
+            ("content", "📝 Контент для соцсетей"),
+            ("news", "📰 Новостной дайджест"),
+            ("habits", "✅ Трекер привычек"),
+        ];
+
+        let mut builder = Self::new();
+
+        for (key, label) in &features {
+            let icon = if selected.contains(&key.to_string()) {
+                "✅"
+            } else {
+                "⬜"
+            };
+            builder.add_row(vec![KeyboardButton::text(format!("{} {}", icon, label))]);
+        }
+
+        builder.add_row(vec![KeyboardButton::text("➡️ Готово")]);
+        builder.build()
+    }
+
+    pub fn add_row(&mut self, buttons: Vec<KeyboardButton>) -> &mut Self {
+        self.rows.push(buttons);
+        self
+    }
+
+    pub fn build(self) -> ReplyKeyboardMarkup {
+        ReplyKeyboardMarkup::new(self.rows)
+    }
+}
+
+impl Default for TelegramKeyboardBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline keyboard button (for callbacks)
+#[derive(Debug, Clone, Serialize)]
+pub struct InlineKeyboardButton {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub callback_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+impl InlineKeyboardButton {
+    pub fn callback(text: impl Into<String>, data: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            callback_data: Some(data.into()),
+            url: None,
+        }
+    }
+
+    pub fn url(text: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            callback_data: None,
+            url: Some(url.into()),
+        }
+    }
+}
+
+/// Inline keyboard markup
+#[derive(Debug, Clone, Serialize)]
+pub struct InlineKeyboardMarkup {
+    pub inline_keyboard: Vec<Vec<InlineKeyboardButton>>,
+}
+
+impl InlineKeyboardMarkup {
+    pub fn new(rows: Vec<Vec<InlineKeyboardButton>>) -> Self {
+        Self {
+            inline_keyboard: rows,
+        }
+    }
+}
+
+/// Result of parsing /start command
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartCommandResult {
+    /// /start with a linking code (from web registration)
+    LinkCode(String),
+    /// Plain /start without code
+    Plain,
+    /// Not a /start command
+    NotStart,
+}
 
 /// Split a message into chunks that respect Telegram's 4096 character limit.
 /// Tries to split at word boundaries when possible, and handles continuation.
@@ -83,6 +278,25 @@ impl TelegramAttachmentKind {
             "VOICE" => Some(Self::Voice),
             _ => None,
         }
+    }
+}
+
+/// Parse /start command and extract any code
+fn parse_start_command(text: &str) -> StartCommandResult {
+    let mut parts = text.split_whitespace();
+    let Some(command) = parts.next() else {
+        return StartCommandResult::NotStart;
+    };
+
+    // Handle /start or /start@botname
+    let base_command = command.split('@').next().unwrap_or(command);
+    if base_command != TELEGRAM_START_COMMAND {
+        return StartCommandResult::NotStart;
+    }
+
+    match parts.next() {
+        Some(code) if !code.is_empty() => StartCommandResult::LinkCode(code.to_string()),
+        _ => StartCommandResult::Plain,
     }
 }
 
@@ -1082,6 +1296,92 @@ Allowlist Telegram username (without '@') or numeric user ID.",
         self.send_media_by_url("sendVoice", "voice", chat_id, url, caption)
             .await
     }
+
+    /// Send a text message with reply keyboard
+    pub async fn send_with_reply_keyboard(
+        &self,
+        chat_id: &str,
+        text: &str,
+        keyboard: &ReplyKeyboardMarkup,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": keyboard,
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram sendMessage with keyboard failed: {err}");
+        }
+
+        Ok(())
+    }
+
+    /// Send a text message with inline keyboard
+    pub async fn send_with_inline_keyboard(
+        &self,
+        chat_id: &str,
+        text: &str,
+        keyboard: &InlineKeyboardMarkup,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": keyboard,
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram sendMessage with inline keyboard failed: {err}");
+        }
+
+        Ok(())
+    }
+
+    /// Remove reply keyboard
+    pub async fn remove_keyboard(&self, chat_id: &str, text: &str) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": {
+                "remove_keyboard": true
+            },
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram remove keyboard failed: {err}");
+        }
+
+        Ok(())
+    }
+
+    /// Parse /start command from message text
+    pub fn parse_start(&self, text: &str) -> StartCommandResult {
+        parse_start_command(text)
+    }
 }
 
 #[async_trait]
@@ -1904,5 +2204,173 @@ mod tests {
         let input = "<tool>{\"name\":\"test\"}</tool>";
         let result = strip_tool_call_tags(input);
         assert_eq!(result, "");
+    }
+
+    // ── /start command parsing tests ───────────────────────────────────
+
+    #[test]
+    fn parse_start_command_with_code() {
+        let result = parse_start_command("/start abc123xyz");
+        assert_eq!(result, StartCommandResult::LinkCode("abc123xyz".to_string()));
+    }
+
+    #[test]
+    fn parse_start_command_with_bot_mention() {
+        let result = parse_start_command("/start@mybot abc123xyz");
+        assert_eq!(result, StartCommandResult::LinkCode("abc123xyz".to_string()));
+    }
+
+    #[test]
+    fn parse_start_command_plain() {
+        let result = parse_start_command("/start");
+        assert_eq!(result, StartCommandResult::Plain);
+    }
+
+    #[test]
+    fn parse_start_command_not_start() {
+        let result = parse_start_command("/help");
+        assert_eq!(result, StartCommandResult::NotStart);
+    }
+
+    #[test]
+    fn parse_start_command_regular_text() {
+        let result = parse_start_command("Hello world");
+        assert_eq!(result, StartCommandResult::NotStart);
+    }
+
+    #[test]
+    fn parse_start_command_empty() {
+        let result = parse_start_command("");
+        assert_eq!(result, StartCommandResult::NotStart);
+    }
+
+    // ── Keyboard builder tests ─────────────────────────────────────────
+
+    #[test]
+    fn keyboard_builder_from_features_goals() {
+        let features = vec!["goals".to_string()];
+        let keyboard = TelegramKeyboardBuilder::from_features(&features);
+
+        let texts: Vec<&str> = keyboard
+            .keyboard
+            .iter()
+            .flatten()
+            .map(|b| b.text.as_str())
+            .collect();
+
+        assert!(texts.contains(&"🎯 Мои цели"));
+        assert!(texts.contains(&"💬 Ассистент"));
+        assert!(texts.contains(&"⚙️ Настройки"));
+    }
+
+    #[test]
+    fn keyboard_builder_from_features_all() {
+        let features = vec![
+            "goals".to_string(),
+            "diagnostics".to_string(),
+            "content".to_string(),
+            "news".to_string(),
+            "habits".to_string(),
+        ];
+        let keyboard = TelegramKeyboardBuilder::from_features(&features);
+
+        let texts: Vec<&str> = keyboard
+            .keyboard
+            .iter()
+            .flatten()
+            .map(|b| b.text.as_str())
+            .collect();
+
+        assert!(texts.contains(&"🎯 Мои цели"));
+        assert!(texts.contains(&"📊 Диагностика"));
+        assert!(texts.contains(&"📝 Контент-план"));
+        assert!(texts.contains(&"📰 Новости"));
+        assert!(texts.contains(&"✅ Привычки"));
+    }
+
+    #[test]
+    fn keyboard_builder_from_features_empty() {
+        let features: Vec<String> = vec![];
+        let keyboard = TelegramKeyboardBuilder::from_features(&features);
+
+        let texts: Vec<&str> = keyboard
+            .keyboard
+            .iter()
+            .flatten()
+            .map(|b| b.text.as_str())
+            .collect();
+
+        // Should still have assistant and settings
+        assert!(texts.contains(&"💬 Ассистент"));
+        assert!(texts.contains(&"⚙️ Настройки"));
+        // But not feature-specific buttons
+        assert!(!texts.contains(&"🎯 Мои цели"));
+    }
+
+    #[test]
+    fn keyboard_builder_onboarding_approach() {
+        let keyboard = TelegramKeyboardBuilder::onboarding_approach();
+
+        assert!(keyboard.one_time_keyboard == Some(true));
+        assert_eq!(keyboard.keyboard.len(), 1);
+        assert_eq!(keyboard.keyboard[0].len(), 2);
+    }
+
+    #[test]
+    fn keyboard_builder_feature_selection() {
+        let selected = vec!["goals".to_string(), "news".to_string()];
+        let keyboard = TelegramKeyboardBuilder::feature_selection(&selected);
+
+        let texts: Vec<&str> = keyboard
+            .keyboard
+            .iter()
+            .flatten()
+            .map(|b| b.text.as_str())
+            .collect();
+
+        // Selected features should have checkmarks (goals and news)
+        assert!(texts.iter().any(|t| t.contains("✅") && t.contains("Постановка")));
+        assert!(texts.iter().any(|t| t.contains("✅") && t.contains("дайджест")));
+        // Unselected should have empty boxes
+        assert!(texts.iter().any(|t| t.contains("⬜") && t.contains("Контент")));
+        // Should have "Готово" button
+        assert!(texts.contains(&"➡️ Готово"));
+    }
+
+    #[test]
+    fn inline_keyboard_button_callback() {
+        let button = InlineKeyboardButton::callback("Click me", "action_1");
+        assert_eq!(button.text, "Click me");
+        assert_eq!(button.callback_data, Some("action_1".to_string()));
+        assert!(button.url.is_none());
+    }
+
+    #[test]
+    fn inline_keyboard_button_url() {
+        let button = InlineKeyboardButton::url("Visit", "https://example.com");
+        assert_eq!(button.text, "Visit");
+        assert!(button.callback_data.is_none());
+        assert_eq!(button.url, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn reply_keyboard_serialization() {
+        let keyboard = ReplyKeyboardMarkup::new(vec![vec![KeyboardButton::text("Test")]]);
+        let json = serde_json::to_string(&keyboard).unwrap();
+        assert!(json.contains("keyboard"));
+        assert!(json.contains("Test"));
+        assert!(json.contains("resize_keyboard"));
+    }
+
+    #[test]
+    fn inline_keyboard_serialization() {
+        let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+            "Button",
+            "callback_data",
+        )]]);
+        let json = serde_json::to_string(&keyboard).unwrap();
+        assert!(json.contains("inline_keyboard"));
+        assert!(json.contains("Button"));
+        assert!(json.contains("callback_data"));
     }
 }

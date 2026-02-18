@@ -40,6 +40,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod agent;
 pub mod approval;
+pub mod auth;
+pub mod billing;
 pub mod channels;
 pub mod config;
 pub mod cost;
@@ -63,6 +65,7 @@ pub mod runtime;
 pub mod security;
 pub mod service;
 pub mod skills;
+pub mod tenant;
 pub mod tools;
 pub mod tunnel;
 pub mod util;

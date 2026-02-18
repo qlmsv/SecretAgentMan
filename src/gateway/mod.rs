@@ -7,6 +7,9 @@
 //! - Request timeouts (30s) to prevent slow-loris attacks
 //! - Header sanitization (handled by axum/hyper)
 
+pub mod auth_handlers;
+pub mod payment_handlers;
+
 use crate::channels::{Channel, SendMessage, WhatsAppChannel};
 use crate::config::Config;
 use crate::memory::{self, Memory, MemoryCategory};
@@ -189,6 +192,11 @@ pub struct AppState {
     pub whatsapp: Option<Arc<WhatsAppChannel>>,
     /// `WhatsApp` app secret for webhook signature verification (`X-Hub-Signature-256`)
     pub whatsapp_app_secret: Option<Arc<str>>,
+    // Payment/billing fields (optional - enabled if auth_manager is Some)
+    pub auth_manager: Option<Arc<crate::auth::AuthManager>>,
+    pub token_meter: Option<Arc<crate::billing::TokenMeter>>,
+    pub cryptomus_api_key: Option<String>,
+    pub cryptomus_merchant_id: Option<String>,
 }
 
 /// Run the HTTP gateway using axum with proper HTTP/1.1 compliance.
@@ -353,6 +361,31 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
 
     crate::health::mark_component_ok("gateway");
 
+    // Initialize payment/billing (optional - requires JWT_SECRET)
+    let (auth_manager, token_meter) = match std::env::var("JWT_SECRET") {
+        Ok(jwt_secret) if !jwt_secret.is_empty() => {
+            match crate::auth::AuthManager::new(&config.workspace_dir, jwt_secret) {
+                Ok(auth) => {
+                    let auth = Arc::new(auth);
+                    let meter = Arc::new(crate::billing::TokenMeter::new(auth.db()));
+                    println!("  💳 Payments: ENABLED (JWT_SECRET configured)");
+                    (Some(auth), Some(meter))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize AuthManager: {}", e);
+                    (None, None)
+                }
+            }
+        }
+        _ => {
+            println!("  💳 Payments: DISABLED (set JWT_SECRET to enable)");
+            (None, None)
+        }
+    };
+
+    let cryptomus_api_key = std::env::var("CRYPTOMUS_API_KEY").ok();
+    let cryptomus_merchant_id = std::env::var("CRYPTOMUS_MERCHANT_ID").ok();
+
     // Build shared state
     let state = AppState {
         provider,
@@ -366,6 +399,10 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         idempotency_store,
         whatsapp: whatsapp_channel,
         whatsapp_app_secret,
+        auth_manager,
+        token_meter,
+        cryptomus_api_key,
+        cryptomus_merchant_id,
     };
 
     // Build router with middleware
@@ -375,6 +412,16 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .route("/webhook", post(handle_webhook))
         .route("/whatsapp", get(handle_whatsapp_verify))
         .route("/whatsapp", post(handle_whatsapp_message))
+        // Payment routes (Cryptomus integration)
+        .route("/api/payment/packages", get(payment_handlers::handle_list_packages))
+        .route("/api/payment/webhook", post(payment_handlers::handle_cryptomus_webhook))
+        .route("/api/payment/create", post(payment_handlers::handle_create_payment))
+        // Auth routes
+        .route("/api/auth/register", post(auth_handlers::handle_register))
+        .route("/api/auth/login", post(auth_handlers::handle_login))
+        .route("/api/auth/telegram-link", get(auth_handlers::handle_telegram_link))
+        .route("/api/auth/telegram-status", get(auth_handlers::handle_telegram_status))
+        .route("/api/usage", get(auth_handlers::handle_usage))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .layer(TimeoutLayer::with_status_code(
@@ -1008,6 +1055,10 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300))),
             whatsapp: None,
             whatsapp_app_secret: None,
+            auth_manager: None,
+            token_meter: None,
+            cryptomus_api_key: None,
+            cryptomus_merchant_id: None,
         };
 
         let mut headers = HeaderMap::new();
@@ -1056,6 +1107,10 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300))),
             whatsapp: None,
             whatsapp_app_secret: None,
+            auth_manager: None,
+            token_meter: None,
+            cryptomus_api_key: None,
+            cryptomus_merchant_id: None,
         };
 
         let headers = HeaderMap::new();
@@ -1113,6 +1168,10 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300))),
             whatsapp: None,
             whatsapp_app_secret: None,
+            auth_manager: None,
+            token_meter: None,
+            cryptomus_api_key: None,
+            cryptomus_merchant_id: None,
         };
 
         let response = handle_webhook(
@@ -1147,6 +1206,10 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300))),
             whatsapp: None,
             whatsapp_app_secret: None,
+            auth_manager: None,
+            token_meter: None,
+            cryptomus_api_key: None,
+            cryptomus_merchant_id: None,
         };
 
         let mut headers = HeaderMap::new();
@@ -1184,6 +1247,10 @@ mod tests {
             idempotency_store: Arc::new(IdempotencyStore::new(Duration::from_secs(300))),
             whatsapp: None,
             whatsapp_app_secret: None,
+            auth_manager: None,
+            token_meter: None,
+            cryptomus_api_key: None,
+            cryptomus_merchant_id: None,
         };
 
         let mut headers = HeaderMap::new();

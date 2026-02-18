@@ -8,7 +8,9 @@ pub mod cron_run;
 pub mod cron_runs;
 pub mod cron_update;
 pub mod delegate;
+pub mod esoteric;
 pub mod file_read;
+pub mod goals;
 pub mod file_write;
 pub mod git_operations;
 pub mod hardware_board_info;
@@ -36,7 +38,9 @@ pub use cron_run::CronRunTool;
 pub use cron_runs::CronRunsTool;
 pub use cron_update::CronUpdateTool;
 pub use delegate::DelegateTool;
+pub use esoteric::EsotericTool;
 pub use file_read::FileReadTool;
+pub use goals::GoalsTool;
 pub use file_write::FileWriteTool;
 pub use git_operations::GitOperationsTool;
 pub use hardware_board_info::HardwareBoardInfoTool;
@@ -191,6 +195,12 @@ pub fn all_tools_with_runtime(
     // Vision tools are always available
     tools.push(Box::new(ScreenshotTool::new(security.clone())));
     tools.push(Box::new(ImageInfoTool::new(security.clone())));
+
+    // Goal management (SMART goals with transformation)
+    tools.push(Box::new(GoalsTool::new(None)));
+
+    // Esoteric tools (Bazi, Destiny Matrix, MBTI)
+    tools.push(Box::new(EsotericTool::new(None)));
 
     if let Some(key) = composio_key {
         if !key.is_empty() {
