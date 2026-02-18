@@ -409,6 +409,19 @@ impl AuthManager {
         Ok(())
     }
 
+    /// Validate code and link Telegram account in one step
+    /// Used by Telegram bot when user sends /start {code}
+    pub fn link_telegram_by_code(
+        &self,
+        code: &str,
+        telegram_id: &str,
+        telegram_username: Option<&str>,
+    ) -> Result<()> {
+        let user_id = self.validate_telegram_code(code)?;
+        self.link_telegram(&user_id, telegram_id, telegram_username)?;
+        Ok(())
+    }
+
     /// Get user by ID
     pub fn get_user(&self, user_id: &str) -> Result<User> {
         let db = self.db.lock();

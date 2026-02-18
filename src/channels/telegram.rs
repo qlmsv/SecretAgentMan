@@ -1,4 +1,5 @@
 use super::traits::{Channel, ChannelMessage, SendMessage};
+use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::security::pairing::PairingGuard;
 use anyhow::Context;
@@ -449,6 +450,8 @@ pub struct TelegramChannel {
     allowed_users: Arc<RwLock<Vec<String>>>,
     pairing: Option<PairingGuard>,
     client: reqwest::Client,
+    /// Optional AuthManager for /start {code} web registration linking
+    auth_manager: Option<Arc<AuthManager>>,
 }
 
 impl TelegramChannel {
@@ -465,12 +468,49 @@ impl TelegramChannel {
             None
         };
 
+        // Auto-initialize AuthManager if JWT_SECRET is set (SaaS mode)
+        let auth_manager = Self::try_init_auth_manager();
+
         Self {
             bot_token,
             allowed_users: Arc::new(RwLock::new(normalized_allowed)),
             pairing,
             client: reqwest::Client::new(),
+            auth_manager,
         }
+    }
+
+    /// Try to initialize AuthManager from environment (for SaaS mode)
+    fn try_init_auth_manager() -> Option<Arc<AuthManager>> {
+        let jwt_secret = std::env::var("JWT_SECRET").ok()?;
+        if jwt_secret.is_empty() {
+            return None;
+        }
+
+        let workspace_dir = std::env::var("ZEROCLAW_WORKSPACE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                directories::ProjectDirs::from("", "", "zeroclaw")
+                    .map(|d| d.data_dir().to_path_buf())
+                    .unwrap_or_else(|| std::path::PathBuf::from("./workspace"))
+            });
+
+        match AuthManager::new(&workspace_dir, jwt_secret) {
+            Ok(auth) => {
+                tracing::info!("Telegram: AuthManager initialized for /start linking");
+                Some(Arc::new(auth))
+            }
+            Err(e) => {
+                tracing::warn!("Telegram: Failed to init AuthManager: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Set the AuthManager for handling /start {code} web registration linking
+    pub fn with_auth_manager(mut self, auth_manager: Arc<AuthManager>) -> Self {
+        self.auth_manager = Some(auth_manager);
+        self
     }
 
     fn normalize_identity(value: &str) -> String {
@@ -694,6 +734,78 @@ impl TelegramChannel {
                     .await;
             }
             return;
+        }
+
+        // Handle /start {code} for web registration linking
+        match parse_start_command(text) {
+            StartCommandResult::LinkCode(code) => {
+                if let Some(auth) = &self.auth_manager {
+                    let telegram_id = user_id_str.as_deref().unwrap_or("unknown");
+                    let tg_username = if normalized_username.is_empty() || normalized_username == "unknown" {
+                        None
+                    } else {
+                        Some(normalized_username.clone())
+                    };
+
+                    match auth.link_telegram_by_code(&code, telegram_id, tg_username.as_deref()) {
+                        Ok(()) => {
+                            // Add to allowed users so they can use the bot
+                            if let Some(identity) = user_id_str.clone().or_else(|| {
+                                if normalized_username.is_empty() || normalized_username == "unknown" {
+                                    None
+                                } else {
+                                    Some(normalized_username.clone())
+                                }
+                            }) {
+                                self.add_allowed_identity_runtime(&identity);
+                                let _ = self.persist_allowed_identity(&identity).await;
+                            }
+
+                            let _ = self
+                                .send(&SendMessage::new(
+                                    "✅ Telegram успешно привязан к вашему аккаунту!\n\nТеперь вы можете общаться с AI-ассистентом. Напишите что-нибудь!",
+                                    &chat_id,
+                                ))
+                                .await;
+                            tracing::info!(
+                                "Telegram: linked account via web registration, telegram_id={}",
+                                telegram_id
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!("Telegram: failed to link account: {}", e);
+                            let _ = self
+                                .send(&SendMessage::new(
+                                    "❌ Код недействителен или истёк. Попробуйте получить новую ссылку на сайте.",
+                                    &chat_id,
+                                ))
+                                .await;
+                        }
+                    }
+                } else {
+                    // No AuthManager configured, show standard start message
+                    let _ = self
+                        .send(&SendMessage::new(
+                            "👋 Привет! Для использования бота нужна авторизация оператора.",
+                            &chat_id,
+                        ))
+                        .await;
+                }
+                return;
+            }
+            StartCommandResult::Plain => {
+                // Plain /start without code - welcome message
+                let _ = self
+                    .send(&SendMessage::new(
+                        "👋 Привет! Я AI-ассистент.\n\nДля начала работы зарегистрируйтесь на сайте и привяжите Telegram.",
+                        &chat_id,
+                    ))
+                    .await;
+                return;
+            }
+            StartCommandResult::NotStart => {
+                // Not a /start command, continue to unauthorized handling
+            }
         }
 
         tracing::warn!(

@@ -12,6 +12,8 @@ pub mod esoteric;
 pub mod file_read;
 pub mod goals;
 pub mod file_write;
+pub mod rss;
+pub mod social;
 pub mod git_operations;
 pub mod hardware_board_info;
 pub mod hardware_memory_map;
@@ -42,6 +44,8 @@ pub use esoteric::EsotericTool;
 pub use file_read::FileReadTool;
 pub use goals::GoalsTool;
 pub use file_write::FileWriteTool;
+pub use rss::RssTool;
+pub use social::SocialMediaTool;
 pub use git_operations::GitOperationsTool;
 pub use hardware_board_info::HardwareBoardInfoTool;
 pub use hardware_memory_map::HardwareMemoryMapTool;
@@ -201,6 +205,12 @@ pub fn all_tools_with_runtime(
 
     // Esoteric tools (Bazi, Destiny Matrix, MBTI)
     tools.push(Box::new(EsotericTool::new(None)));
+
+    // RSS feed aggregation
+    tools.push(Box::new(RssTool::new()));
+
+    // Social media content management
+    tools.push(Box::new(SocialMediaTool::new()));
 
     if let Some(key) = composio_key {
         if !key.is_empty() {

@@ -309,6 +309,39 @@ Input: "I want to lose 10 kg"
 Output: "I am at my target weight, having lost 10 kg through healthy lifestyle"
 ```
 
+### RSS Tool
+
+Location: [tools/rss.rs](src/tools/rss.rs)
+
+**Actions**:
+- `fetch` - Fetch and aggregate RSS feeds
+- `list_defaults` - Show default feed sources
+
+**Categories**: tech, ai, business
+
+**Example**:
+```json
+{
+  "action": "fetch",
+  "category": "tech",
+  "limit": 10
+}
+```
+
+### Social Media Tool
+
+Location: [tools/social.rs](src/tools/social.rs)
+
+**Actions**:
+- `list_platforms` - Show supported platforms
+- `generate_post` - Generate content template with hashtags
+- `schedule` - Schedule post (requires OAuth)
+- `status` - Check OAuth connection status
+
+**Platforms**: LinkedIn, Twitter, Telegram Channel
+
+**Note**: OAuth integration is stub - requires API keys for each platform.
+
 ---
 
 ## Part 5: Database Schema
